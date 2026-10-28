@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start the phone bridge in one terminal.
-# Starts opencode, the phone server, the Cloudflare tunnel, and caffeinate.
+# Starts opencode, the phone server, the Cloudflare tunnel, caffeinate,
+# and the context snapshot refresher.
 # Ctrl-C stops all of them.
 
 set -u
@@ -55,6 +56,15 @@ echo "Starting bridge from $ROOT"
 /usr/bin/caffeinate -i &
 pids+=($!)
 
+# Refresh once before the phone server starts, then keep it fresh.
+echo "Refreshing context snapshot..."
+if ! node scripts/context.mjs --once; then
+  echo "warning: snapshot refresh failed; using existing context/snapshot.md" >&2
+fi
+
+CONTEXT_INTERVAL_SECONDS="${CONTEXT_INTERVAL_SECONDS:-300}"
+export CONTEXT_INTERVAL_SECONDS
+
 opencode serve --hostname 127.0.0.1 --port 4096 &
 pids+=($!)
 
@@ -62,6 +72,9 @@ node scripts/phone-server.mjs &
 pids+=($!)
 
 cloudflared tunnel --config "$HOME/.cloudflared/config.yml" run marchforth-phone &
+pids+=($!)
+
+node scripts/context.mjs &
 pids+=($!)
 
 echo "PIDs: ${pids[*]}"

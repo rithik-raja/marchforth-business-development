@@ -10,7 +10,7 @@ permission:
     "~/.cloudflared/**": allow
 ---
 
-You are setting up the "phone bridge" and context snapshot on this Mac. The goal: Rithik calls an agent from his iPhone via an iOS Shortcut. The Shortcut POSTs to `https://agent.rithikraja.com/ask` and polls `GET /reply`. Cloudflare Tunnel forwards those to a local Node server (`scripts/phone-server.mjs`), which drives a headless `opencode serve` process using the `iphone-agent`. A snapshot is built manually with `scripts/context.mjs --once`. `scripts/start-bridge.sh` starts the three long-lived processes (opencode, phone server, cloudflared) plus caffeinate in one terminal; no background services are installed.
+You are setting up the "phone bridge" and context snapshot on this Mac. The goal: Rithik calls an agent from his iPhone via an iOS Shortcut. The Shortcut POSTs to `https://agent.rithikraja.com/ask` and polls `GET /reply`. Cloudflare Tunnel forwards those to a local Node server (`scripts/phone-server.mjs`), which drives a headless `opencode serve` process using the `iphone-agent`. `scripts/start-bridge.sh` starts the three long-lived processes (opencode, phone server, cloudflared), caffeinate, and a context snapshot refresher in one terminal; no background services are installed. The refresher rebuilds `context/snapshot.md` every 5 minutes.
 
 Work through the steps in order. Verify each step before moving on. Never run destructive commands without asking first. For anything that needs `sudo` or a GUI click, show Rithik the exact command or screen and wait for him to say it is done. Use absolute paths everywhere.
 
@@ -83,11 +83,9 @@ cd /Users/rithik/repos/marchforth-business-development
 bash scripts/start-bridge.sh
 ```
 
-The script starts `opencode serve`, the phone server, `cloudflared`, and `caffeinate -i` in parallel. It refuses to start if ports 4096 or 8787 are already in use. Press Ctrl-C once to stop all of them.
+The script starts `opencode serve`, the phone server, `cloudflared`, `caffeinate -i`, and the context refresher. It runs `node scripts/context.mjs --once` at startup, then refreshes the snapshot every 5 minutes (`CONTEXT_INTERVAL_SECONDS=300`). It refuses to start if ports 4096 or 8787 are already in use. Press Ctrl-C once to stop all of them.
 
-The snapshot is separate. Run this whenever you want a fresh snapshot; it exits on its own and is not part of the bridge:
-
-`node scripts/context.mjs --once`
+To force an immediate refresh without restarting the bridge, run `node scripts/context.mjs --once`.
 
 Verify with `curl -s http://127.0.0.1:4096/global/health` and `curl -s http://127.0.0.1:8787/health`.
 
@@ -142,7 +140,7 @@ For sending iMessages only (reading uses `chat.db`): run `osascript -e 'tell app
 
 # 9. End-to-end test
 
-Run these after `scripts/start-bridge.sh` is running and `context/snapshot.md` exists.
+Run these after `scripts/start-bridge.sh` is running. The script creates or refreshes `context/snapshot.md` at startup.
 
 - `curl -s http://127.0.0.1:4096/global/health` -> healthy.
 - `curl -s -H "X-Ask-Token: $TOKEN" http://127.0.0.1:8787/health` -> `ok:true`.
@@ -164,7 +162,7 @@ Tell Rithik to set in the Shortcut:
 - Tunnel 502: cloudflared isn't running or `service` points to the wrong port.
 - Agent hangs on a tool: a permission is still set to "ask" for `iphone-agent`; re-check `.opencode/agents/iphone-agent.md`.
 - Calendar or reminders fail: run `bin/ekctl list calendars` and check Calendar/Reminders privacy permissions for `bin/ekctl`.
-- Snapshot is stale or missing: ask Rithik to run `node scripts/context.mjs --once` and check its terminal output.
+- Snapshot is stale or missing: the bridge refreshes it every 5 minutes; force a refresh with `node scripts/context.mjs --once` and check the bridge terminal for `context refresh failed`.
 - Bridge won't start: `scripts/start-bridge.sh` refuses to run if port 4096 or 8787 is in use; stop the old bridge first.
 - If a process is left behind after Ctrl-C, check `lsof -nP -iTCP:4096 -sTCP:LISTEN` and `lsof -nP -iTCP:8787 -sTCP:LISTEN`.
 
