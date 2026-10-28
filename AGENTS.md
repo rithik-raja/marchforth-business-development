@@ -100,9 +100,10 @@ Rules:
 - `cal.mjs` resolves calendar and list names to IDs. Use the names above.
 - For recurring events, read `events` for the event `id` and `occurrence`, then pass `--occurrence` with `--span this|future|all` when changing or deleting one occurrence.
 - iCloud Contacts are not the business CRM. The CRM is in `crm/` (see below).
-- `context/snapshot.md` is pre-injected on the first turn. Prefer it for calendar, reminder, CRM, and iMessage reads. Use `cal.mjs` for details or writes.
+
+## iMessage
+
 - iMessage is read-only via `~/Library/Messages/chat.db`. You may send an iMessage only with explicit permission.
-- `bin/ekctl` is vendored. If it is missing, run `bash scripts/install-ekctl.sh`.
 
 ## Mail
 
@@ -145,4 +146,3 @@ Rules:
 - Tags are semicolon-separated. Dates are `YYYY-MM-DD`.
 - `context/snapshot.md` only injects due and overdue CRM follow-ups. Use `crm.mjs show` for everyone else.
 - iCloud is the execution layer for calendar and reminders. Do not create CRM tasks or events.
-- Zoho is mail-only. `scripts/zoho.mjs` has no CRM access.
