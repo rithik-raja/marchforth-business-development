@@ -70,23 +70,39 @@ Rithik is determined to get his first client. As the business development agent,
 
 # Integrations
 
-## iCloud
+## iCloud Calendar, Reminders, Contacts
 
-You are running on a macOS device. You have access to `osascript` to access Rithik's Calendar, Reminders, iMessage. You can access iMessages via the ~/Library/Messages/chat.db sqlite DB. Note the following important conventions.
+Use `scripts/cal.mjs` for all iCloud PIM operations. It wraps `bin/ekctl` (EventKit) for calendar/reminders and CardDAV for contacts.
 
-Each calendar in the iCloud Calendar, and each list in the iCloud Reminders follow the same convention:
-  - Personal things go on "Personal"
-  - Marchforth-related things go on "Business"
-  - Rithik's corporate job is at Humana, for which related things go on "Humana"
+Conventions:
+- Personal things go on "Personal".
+- Marchforth things go on "Business".
+- Rithik's corporate job is Humana, for which related things go on "Humana".
+- Default calendars and reminder lists are Business, Personal, and Humana.
 
-iCloud Contacts:
-- Marchforth-related things are in the contact list "Business"
-- All other contacts are unlisted
+Commands:
+- `node scripts/cal.mjs calendars`
+- `node scripts/cal.mjs events [--from ...] [--to ...] [--calendars Business,Personal,Humana]` — defaults to 30 days back and 180 days forward.
+- `node scripts/cal.mjs add-event --calendar Business --title ... --start ... --end ... [--location ...] [--notes ...] [--all-day]`
+- `node scripts/cal.mjs update-event <id> [--title ...] [--start ...] [--end ...] [--location ...] [--notes ...] [--occurrence ...] [--span this|future|all]`
+- `node scripts/cal.mjs delete-event <id> [--occurrence ...] [--span this|future|all]`
+- `node scripts/cal.mjs reminders [--lists Business,Personal,Humana] [--completed false]`
+- `node scripts/cal.mjs add-reminder --list Business --title ... [--due ...] [--notes ...] [--priority 0|1|5|9]`
+- `node scripts/cal.mjs update-reminder <id> [--title ...] [--due ...] [--notes ...] [--priority ...] [--completed true|false]`
+- `node scripts/cal.mjs complete-reminder <id>`
+- `node scripts/cal.mjs delete-reminder <id>`
+- `node scripts/cal.mjs contacts [--search term] [--limit 20]`
+- `node scripts/cal.mjs add-contact --name ... [--first-name ...] [--last-name ...] [--org ...] [--title ...] [--phone ...] [--email ...] [--note ...]`
+- `node scripts/cal.mjs update-contact <id> [fields]`
+- `node scripts/cal.mjs delete-contact <id>`
 
-
-
-iMessage:
-You are allowed to send messages using iMessage but MUST request permission first. You MAY NOT send iMessages without asking first.
+Rules:
+- `cal.mjs` resolves calendar and list names to IDs. Use the names above.
+- For recurring events, read `events` for the event `id` and `occurrence`, then pass `--occurrence` with `--span this|future|all` when changing or deleting one occurrence.
+- iCloud Contacts are not the business CRM. The CRM is in `crm/` (see below).
+- `context/snapshot.md` is pre-injected on the first turn. Prefer it for calendar, reminder, CRM, and iMessage reads. Use `cal.mjs` for details or writes.
+- iMessage is read-only via `~/Library/Messages/chat.db`. You may send an iMessage only with explicit permission.
+- `bin/ekctl` is vendored. If it is missing, run `bash scripts/install-ekctl.sh`.
 
 ## Mail
 
@@ -107,130 +123,26 @@ Note that you are prohibited from sending mail. The only 'write' action you are 
 
 ## CRM
 
-Rithik uses the same Zoho ecosystem to manage his client CRM.
-Use scripts/zoho.mjs crm
-- `--path` is relative to `https://www.zohoapis.com/crm/v8` (leading slash optional).
-- `--method` defaults to `GET`; `--body` is a JSON string.
-Example: node scripts/zoho.mjs crm --method=POST --path=/Contacts --body='{"data":[{"Last_Name":"Kelly"}]}'
+The CRM is CSV:
+- `crm/contacts.csv` — one row per person.
+- `crm/interactions.csv` — append-only history.
 
-Use Zoho CRM for the following:
-- Contacts/accounts: one searchable place for who you know, where they work, title, phone/email, lead source.
-- Notes: the relationship memory - when you met, what was said, what was promised. This is the main value.
-- Deals: stage, value, closing date, and next step.
-- Querying capabilities.
+Use `scripts/crm.mjs`; do not hand-edit the CSVs.
 
-Events and Tasks are to be handled by iCloud, not Zoho.
+Commands:
+- `node scripts/crm.mjs list`
+- `node scripts/crm.mjs show <id|name>`
+- `node scripts/crm.mjs search <term>`
+- `node scripts/crm.mjs due [--date YYYY-MM-DD]`
+- `node scripts/crm.mjs add --name ... [--org ...] [--title ...] [--phone ...] [--email ...] [--source ...] [--first-met ...] [--stage ...] [--tags ...] [--notes ...]`
+- `node scripts/crm.mjs update <id> [fields]`
+- `node scripts/crm.mjs log <id> --channel text|call|email|in-person|event|linkedin|intro|other --summary ... [--next-step ...] [--next-date YYYY-MM-DD] [--date YYYY-MM-DD]`
 
-### Conventions
-
-- IDs are numeric strings. Never parse as JS numbers; precision is lost.
-- Lookup fields accept `{"id": "<recordId>"}`
-- Writes use an envelope: `{"data": [ {...}, {...} ]}`.
-
-### Core endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/{module}?fields=...` | List records |
-| GET | `/{module}/{id}?fields=...` | Get one record |
-| POST | `/{module}` | Create 1-100 records |
-| PUT | `/{module}` | Update many (each item needs `id`) |
-| PUT | `/{module}/{id}` | Update one |
-| POST | `/{module}/upsert` | Create or update by duplicate-check field |
-| DELETE | `/{module}/{id}` | Delete one |
-| DELETE | `/{module}?ids=id1,id2` | Delete up to 100 |
-| GET | `/{module}/search` | Criteria/word/email/phone search |
-| POST | `/coql` | COQL SELECT query |
-| GET | `/{module}/{id}/Notes` | List notes for a record |
-| POST | `/{module}/{id}/Notes` | Create notes for a record |
-| PUT | `/{module}/{id}/Notes/{noteId}` | Update a note |
-| DELETE | `/{module}/{id}/Notes/{noteId}` | Delete a note |
-| POST | `/__composite_requests` | Up to 5 sub-requests in one call |
-| GET | `/settings/modules` | Module API names |
-| GET | `/settings/fields?module=X` | Field API names/types/picklists |
-| GET | `/settings/layouts?module=X` | Layouts, required flags, sections |
-| GET | `/settings/custom_views?module=X` | Saved views |
-| GET | `/settings/pipeline?layout_id=Y` | Deal stages |
-| GET | `/users` | Users and IDs (owners) |
-| GET | `/org` | Org info/timezone |
-| GET | `/settings/recycle_bin` | Deleted records |
-| POST | `/settings/recycle_bin/actions/restore` | Restore deleted records |
-
-Notes paths use the parent record, e.g. `POST /Contacts/123/Notes`. For `POST /Notes`, use
-`Parent_Id` with `api_name` only (no `id` inside `module`; that causes `AMBIGUITY_DURING_PROCESSING`):
-
-```json
-{"data":[{"Note_Title":"Intro call","Note_Content":"Met at chamber event.","Parent_Id":{"module":{"api_name":"Contacts"},"id":"123"}}]}
-```
-
-Polymorphic lookups (`What_Id` on Calls) also need top-level `"$se_module":"Accounts"` (or the related module).
-
-### Modules and common fields
-
-Verify required fields and picklist values via `/settings/layouts?module=X` and
-`/settings/fields?module=X` before writing. Deal stages differ per layout: get the Deals
-`layout_id` from `/settings/layouts?module=Deals`, then call `/settings/pipeline?layout_id=<id>`.
-
-| Module | Key fields |
-|---|---|
-| Contacts | `First_Name`, `Last_Name`*, `Email`, `Phone`, `Mobile`, `Title`, `Account_Name` (lookup), `Lead_Source`, `Description`, `Owner`, `Mailing_Street/City/State/Zip_Code/Country` |
-| Accounts | `Account_Name`*, `Website`, `Phone`, `Industry`, `Description`, `Billing_Street/City/State/Zip_Code/Country`, `Owner` |
-| Leads | `Last_Name`*, `Company`*, `First_Name`, `Email`, `Phone`, `Mobile`, `Lead_Source`, `Lead_Status`, `Industry`, `Description`, `Owner` |
-| Deals | `Deal_Name`*, `Stage`*, `Amount`, `Closing_Date`, `Account_Name` (lookup), `Description`, `Owner`, `Probability` |
-| Calls | `Subject`*, `Call_Type`, `Call_Start_Time`, `Call_Duration`, `Call_Purpose`, `Call_Result`, `Description`, `Owner`, `Who_Id`/`What_Id` |
-
-\* commonly required; confirm per layout.
-
-### Examples
-
-Create a contact:
-```json
-POST /Contacts
-{"data":[{"First_Name":"Bruce","Last_Name":"Kelly","Email":"bruce@example.com","Phone":"2395550100","Title":"Owner","Account_Name":{"id":"5725767000007910001"},"Lead_Source":"Chamber","Description":"Met via Naples Chamber intro."}]}
-```
-
-Update one record (only send changed fields):
-```json
-PUT /Contacts/5725767000001234001
-{"data":[{"Phone":"2395550199","Description":"Follow-up scheduled."}]}
-```
-
-Upsert by email:
-```json
-POST /Contacts/upsert
-{"data":[{"Last_Name":"Kelly","Email":"bruce@example.com","Phone":"2395550100"}],"duplicate_check_fields":["Email"]}
-```
-
-Search (URL-encode the criteria):
-```
-GET /Contacts/search?criteria=((Email:equals:bruce@example.com))&fields=First_Name,Last_Name,Email
-GET /Contacts/search?word=Kelly&fields=First_Name,Last_Name,Email
-GET /Contacts/search?email=bruce@example.com
-```
-
-Criteria supports `equals`, `not_equal`, `starts_with`, `contains`, `in`, `not_in`, `is_empty`,
-`greater_than`, etc. Max 10 conditions. For text, `equals` behaves like `contains`.
-
-COQL:
-```json
-POST /coql
-{"select_query":"select id, First_Name, Last_Name, Email from Contacts where Lead_Source = 'Chamber' order by Modified_Time desc limit 50"}
-```
-
-COQL supports `where`, `order by`, `limit`, `offset`, aggregates, and joins. Use `limit`/`offset`
-to page; keep queries narrow. `include_meta:["fields"]` returns field metadata.
-
-Composite (max 5 sub-requests; `@{id:JSONPath}` references earlier output):
-```json
-POST /__composite_requests
-{"rollback_on_fail":false,"parallel_execution":false,"__composite_requests":[
-  {"sub_request_id":"1","method":"POST","uri":"/crm/v8/Contacts","body":{"data":[{"Last_Name":"Kelly","Email":"bruce@example.com"}]}},
-  {"sub_request_id":"2","method":"POST","uri":"/crm/v8/Notes","body":{"data":[{"Note_Title":"Intro","Note_Content":"Met at event.","Parent_Id":{"module":{"api_name":"Contacts"},"id":"@{1:$.data[0].details.id}"}}]}}
-]}
-```
-
-### Delete / recovery
-
-- `DELETE /{module}/{id}` or `DELETE /{module}?ids=...`; up to 100 IDs.
-- Prefer one delete at a time, only after an explicit confirmation.
-- Recycle Bin: `GET /settings/recycle_bin`, restore via `POST /settings/recycle_bin/actions/restore` with `{"ids":["..."]}`.
+Rules:
+- `contacts.csv` is the person/company record. `interactions.csv` is append-only.
+- The latest interaction with a `next_step_date` drives `due`.
+- Stages: `new`, `contacted`, `warm`, `meeting`, `proposal`, `won`, `lost`, `dormant`.
+- Tags are semicolon-separated. Dates are `YYYY-MM-DD`.
+- `context/snapshot.md` only injects due and overdue CRM follow-ups. Use `crm.mjs show` for everyone else.
+- iCloud is the execution layer for calendar and reminders. Do not create CRM tasks or events.
+- Zoho is mail-only. `scripts/zoho.mjs` has no CRM access.

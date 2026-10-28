@@ -1,0 +1,21 @@
+{
+  "name": "marchforth-business-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cal": "node scripts/cal.mjs",
+    "crm": "node scripts/crm.mjs",
+    "context": "node scripts/context.mjs",
+    "phone": "node scripts/phone-server.mjs",
+    "ekctl:install": "bash scripts/install-ekctl.sh"
+  },
+  "dependencies": {
+    "csv-parse": "^7.0.3",
+    "csv-stringify": "^6.6.0",
+    "tsdav": "^2.5.0",
+    "vcf": "^2.1.2"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

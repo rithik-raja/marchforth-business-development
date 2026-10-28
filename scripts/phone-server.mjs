@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import http from "node:http";
 import path from "node:path";
+import { readFile, stat } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +18,8 @@ const OPENCODE_URL = (process.env.OPENCODE_URL || "http://127.0.0.1:4096").repla
 const KEEP_ALIVE_MS = Number(process.env.SESSION_KEEP_ALIVE_SECONDS || 300) * 1000;
 const AGENT = process.env.PHONE_AGENT || "iphone-agent";
 const STATUS_RECHECK_MS = 5000;
+const SNAPSHOT_FILE = path.join(ROOT, "context", "snapshot.md");
+const MAX_CONTEXT_CHARS = 30000;
 
 const state = {
   sessionId: null,
@@ -28,7 +31,6 @@ const state = {
   lastInteractionAt: 0,
   lastEventAt: 0,
   assistantMessages: new Set(),
-  seenTools: new Set(),
   sseConnected: false,
 };
 
@@ -106,13 +108,6 @@ function flushText() {
   state.pendingPartId = null;
 }
 
-function enqueueWorking(partId) {
-  if (!partId || state.seenTools.has(partId)) return;
-  state.seenTools.add(partId);
-  flushText();
-  state.queue.push({ text: "Working." });
-}
-
 function finishTurn(errorText) {
   if (!state.turnActive) return;
   flushText();
@@ -138,9 +133,6 @@ function handleEvent(event) {
       if (state.pendingPartId && state.pendingPartId !== p.partID) flushText();
       state.pendingPartId = p.partID;
       state.pendingText += p.delta || "";
-      break;
-    case "message.part.updated":
-      if (p.part?.type === "tool") enqueueWorking(p.part.id);
       break;
     case "session.idle":
       finishTurn();
@@ -216,7 +208,7 @@ async function ensureSession(title) {
   const now = Date.now();
   const reuse = state.sessionId && now - state.lastInteractionAt <= KEEP_ALIVE_MS;
   state.lastInteractionAt = now;
-  if (reuse) return state.sessionId;
+  if (reuse) return { sessionId: state.sessionId, reused: true };
 
   if (state.sessionId) {
     try {
@@ -237,10 +229,9 @@ async function ensureSession(title) {
   state.queue = [];
   state.pendingText = "";
   state.pendingPartId = null;
-  state.seenTools.clear();
   state.assistantMessages.clear();
   log("new session", state.sessionId);
-  return state.sessionId;
+  return { sessionId: state.sessionId, reused: false };
 }
 
 async function handleAsk(req, res, url) {
@@ -262,9 +253,9 @@ async function handleAsk(req, res, url) {
     return;
   }
 
-  let sid;
+  let session;
   try {
-    sid = await ensureSession(text);
+    session = await ensureSession(text);
   } catch (err) {
     log("ensureSession failed", err.message);
     state.queue.push({ text: "The agent service is not reachable on the Mac mini." });
@@ -274,21 +265,43 @@ async function handleAsk(req, res, url) {
     return;
   }
 
+  const sid = session.sessionId;
   state.queue = [];
   state.pendingText = "";
   state.pendingPartId = null;
-  state.seenTools.clear();
   state.assistantMessages.clear();
   state.status = "working";
   state.turnActive = true;
   state.lastEventAt = Date.now();
-  log("ask", sid, `${text.length} chars`);
+
+  let snapshot = null;
+  if (!session.reused) {
+    try {
+      const [snapshotText, snapshotStat] = await Promise.all([readFile(SNAPSHOT_FILE, "utf8"), stat(SNAPSHOT_FILE)]);
+      snapshot = {
+        text: snapshotText.slice(0, MAX_CONTEXT_CHARS),
+        ageMs: Date.now() - snapshotStat.mtimeMs,
+      };
+    } catch (err) {
+      log("snapshot unavailable", err.message);
+    }
+  }
+  const promptText = snapshot
+    ? `<context>\n${snapshot.text}\n</context>\n\nUser request: ${text}`
+    : text;
+  log(
+    "ask",
+    sid,
+    `${text.length} chars`,
+    session.reused ? "reused" : "new",
+    snapshot ? `context=${snapshot.text.length} chars age=${Math.round(snapshot.ageMs / 1000)}s` : "no context",
+  );
 
   try {
     const r = await fetch(`${OPENCODE_URL}/session/${sid}/prompt_async`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ agent: AGENT, parts: [{ type: "text", text }] }),
+      body: JSON.stringify({ agent: AGENT, parts: [{ type: "text", text: promptText }] }),
     });
     if (!r.ok) throw new Error(`prompt_async ${r.status}: ${await r.text()}`);
   } catch (err) {

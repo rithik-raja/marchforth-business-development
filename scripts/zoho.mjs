@@ -10,25 +10,11 @@ const TOKEN_FILE = join(ROOT, ".zoho", "tokens.json");
 const REDIRECT_URI = "http://localhost:8080/callback";
 const ACCOUNTS_URL = "https://accounts.zoho.com";
 const MAIL_URL = "https://mail.zoho.com";
-const CRM_URL = "https://www.zohoapis.com/crm/v8";
 const SCOPES = [
   "ZohoMail.accounts.READ",
   "ZohoMail.messages.READ",
   "ZohoMail.messages.CREATE",
   "ZohoMail.folders.READ",
-  "ZohoCRM.modules.ALL",
-  "ZohoCRM.modules.notes.ALL",
-  "ZohoCRM.coql.READ",
-  "ZohoCRM.composite_requests.CUSTOM",
-  "ZohoCRM.users.READ",
-  "ZohoCRM.org.READ",
-  "ZohoCRM.settings.fields.READ",
-  "ZohoCRM.settings.modules.READ",
-  "ZohoCRM.settings.layouts.READ",
-  "ZohoCRM.settings.custom_views.READ",
-  "ZohoCRM.settings.pipeline.READ",
-  "ZohoCRM.settings.recycle_bin.READ",
-  "ZohoCRM.settings.recycle_bin.UPDATE",
 ];
 
 async function loadEnv() {
@@ -209,30 +195,6 @@ async function createDraft({ to, subject, content, from, inReplyTo, refHeader })
   console.log(`Draft saved from ${fromAddress} to ${to}: ${JSON.stringify(res.data)}`);
 }
 
-async function crm({ method = "GET", path, body }) {
-  if (!path) throw new Error("--path is required (relative to /crm/v8)");
-  const token = await getAccessToken();
-  const res = await fetch(`${CRM_URL}${path.startsWith("/") ? path : `/${path}`}`, {
-    method: method.toUpperCase(),
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  const text = await res.text();
-  if (!text) {
-    console.log(`${res.status} ${res.statusText}`);
-  } else {
-    try {
-      console.log(JSON.stringify(JSON.parse(text), null, 2));
-    } catch {
-      console.log(text);
-    }
-  }
-  if (!res.ok) process.exitCode = 1;
-}
-
 async function read({ limit = 10, folder = "Inbox" } = {}) {
   const account = await getAccount();
   console.log(`Account: ${account.primaryEmailAddress} (${account.accountId})`);
@@ -300,18 +262,11 @@ if (command === "auth") {
   );
 } else if (command === "accounts") {
   await listAccounts();
-} else if (command === "crm") {
-  await crm({
-    method: options.method ?? "GET",
-    path: options.path,
-    body: options.body ? JSON.parse(options.body) : undefined,
-  });
 } else {
   console.log(
     "Usage: node scripts/zoho.mjs auth | read [--limit=10] [--folder=Inbox] | " +
       "draft --to=... [--subject=...] [--content=...] [--from=...] | " +
-      "header --id=... [--folder=Inbox] | accounts | " +
-      "crm --path=/org [--method=GET] [--body='{...}']",
+      "header --id=... [--folder=Inbox] | accounts",
   );
   process.exit(1);
 }
