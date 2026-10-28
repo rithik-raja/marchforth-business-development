@@ -20,7 +20,7 @@ Work through the steps in order. Verify each step before moving on. Never run de
 
 - macOS with a logged-in user and auto-login enabled (FileVault is off, so a reboot should log in automatically). Confirm this.
 - This repo is cloned on this Mac and you are running from its root (so `.opencode/agents/*.md` load).
-- Node 22.5 or newer (Node 24 recommended, for `node:sqlite`): `node --version`. If missing, install via Homebrew (`brew install node`), not nvm, so the path is stable.
+- Node 22.5 or newer (required for `node:sqlite`): `node --version`. If missing, install the official macOS x64 `.pkg` or tarball from https://nodejs.org/en/download, or use nvm. Use the x64 build on this Intel Mac.
 - opencode installed and authenticated: `opencode --version` and `opencode models` (the latter must list a model without prompting).
 - `.env` and `.zoho/tokens.json` exist in the repo root. `.env` must contain `PHONE_TOKEN`, `OPENCODE_URL`, `PHONE_PORT`, `PHONE_HOST`, `SESSION_KEEP_ALIVE_SECONDS`, `ICLOUD_EMAIL`, `ICLOUD_APP_PASSWORD`, plus the Zoho mail keys.
 - Dependencies are installed: `npm install`. The EventKit helper is installed: `bash scripts/install-ekctl.sh`.
@@ -92,9 +92,12 @@ Verify with `curl -s http://127.0.0.1:4096/global/health` and `curl -s http://12
 
 # 5. Cloudflare Tunnel
 
-Print the cloudflared commands for Rithik to run. Do not run them yourself.
+Install the cloudflared wrapper:
 
-- `brew install cloudflared`
+`npm i -g cloudflared`
+
+If npm needs elevated permissions, show Rithik the exact command and wait. Then print these tunnel commands for Rithik to run. Do not run them yourself.
+
 - `cloudflared tunnel login` (opens a browser; ask Rithik to authorize the domain `rithikraja.com` on Cloudflare).
 - `cloudflared tunnel create marchforth-phone` (creates credentials under `~/.cloudflared/<uuid>.json`).
 - Write `~/.cloudflared/config.yml`:

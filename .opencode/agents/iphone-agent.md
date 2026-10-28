@@ -1,9 +1,10 @@
 ---
 description: Rithik's voice assistant, spoken aloud over the phone
 mode: primary
-model: opencode-go/deepseek-v4.1-flash
+model: opencode-go/claude-haiku-5-5
 options:
-  reasoningEffort: none
+  thinking:
+    type: disabled
 permission:
   bash: allow
   edit: allow

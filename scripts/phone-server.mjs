@@ -243,7 +243,6 @@ async function handleAsk(req, res, url) {
     return;
   }
   const text = extractText(raw, req, url).trim();
-  state.lastInteractionAt = Date.now();
 
   if (!text) {
     state.queue.push({ text: "I didn't catch that." });
